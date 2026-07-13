@@ -13,14 +13,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@main
+      # Plain Zig install instead of the nix devshell: Zig inside nix on a
+      # GitHub-hosted macOS runner cannot link the build runner against
+      # libSystem; a plain Zig finds the Apple SDK via xcrun.
+      - uses: mlugg/setup-zig@v2
         with:
-          determinate: true
-
-      # Public read of the ghostty cachix cache; no auth token needed.
-      - uses: cachix/cachix-action@v16
-        with:
-          name: ghostty
+          version: 0.15.2
 
       - name: Select Xcode
         run: |
@@ -29,9 +27,9 @@ jobs:
           xcodebuild -version
 
       # GhosttyKit is the framework that is built from Zig for the native
-      # Mac app. The nix devshell pins the exact Zig version.
+      # Mac app.
       - name: Build GhosttyKit
-        run: nix develop -c zig build -Doptimize=ReleaseFast -Demit-macos-app=false
+        run: zig build -Doptimize=ReleaseFast -Demit-macos-app=false
 
       # Must NOT run inside nix; nix breaks xcodebuild. The project ad-hoc
       # signs by default (CODE_SIGN_IDENTITY=-), fine for a personal build.
