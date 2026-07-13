@@ -37,10 +37,20 @@ final class ScriptTerminal: NSObject {
     }
 
     /// Exposed as the AppleScript `title` property.
+    ///
+    /// Setting a non-empty title pins it (terminal-driven title updates are
+    /// masked, same as prompt_surface_title); setting an empty string restores
+    /// automatic titles.
     @objc(title)
     var title: String {
-        guard NSApp.isAppleScriptEnabled else { return "" }
-        return surfaceView?.title ?? ""
+        get {
+            guard NSApp.isAppleScriptEnabled else { return "" }
+            return surfaceView?.title ?? ""
+        }
+        set {
+            guard NSApp.isAppleScriptEnabled else { return }
+            surfaceView?.setManualTitle(newValue.isEmpty ? nil : newValue)
+        }
     }
 
     /// Exposed as the AppleScript `working directory` property.

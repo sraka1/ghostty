@@ -96,9 +96,17 @@ private struct TerminalSplitLeaf: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Ghostty.InspectableSurface(
-                surfaceView: surfaceView,
-                isSplit: isSplit)
+            VStack(spacing: 0) {
+                // Fork feature: an always-visible titlebar on each pane when the
+                // window is split. Disable with:
+                //   defaults write com.mitchellh.ghostty SplitTitlebarDisabled -bool true
+                if isSplit && !UserDefaults.standard.bool(forKey: "SplitTitlebarDisabled") {
+                    SplitPaneTitlebar(surfaceView: surfaceView)
+                }
+                Ghostty.InspectableSurface(
+                    surfaceView: surfaceView,
+                    isSplit: isSplit)
+            }
             .background {
                 // If we're dragging ourself, we hide the entire drop zone. This makes
                 // it so that a released drop animates back to its source properly
@@ -188,6 +196,53 @@ private struct TerminalSplitLeaf: View {
 
             return true
         }
+    }
+}
+
+/// An always-visible compact titlebar shown above each pane in a split,
+/// with the pane's title and a subtitle summarizing what the pane is doing.
+///
+/// The title is the surface title: a manually pinned name if one was set
+/// (via prompt_surface_title or the AppleScript `name` property), otherwise
+/// the terminal-reported title. The subtitle prefers the live
+/// terminal-reported title masked by a manual name (the running command, or
+/// the cwd via shell integration), falling back to the working directory.
+private struct SplitPaneTitlebar: View {
+    @ObservedObject var surfaceView: Ghostty.SurfaceView
+
+    private var subtitle: String? {
+        if let fromTerminal = surfaceView.titleFromTerminal,
+           !fromTerminal.isEmpty,
+           fromTerminal != surfaceView.title {
+            return fromTerminal
+        }
+        guard let pwd = surfaceView.pwd, !pwd.isEmpty else { return nil }
+        return (pwd as NSString).abbreviatingWithTildeInPath
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(surfaceView.title)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 22)
+        .frame(maxWidth: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Pane title: \(surfaceView.title)")
     }
 }
 

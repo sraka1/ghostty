@@ -86,7 +86,7 @@
     <class name="terminal" code="Gtrm" plural="terminals" description="An individual terminal surface.">
       <cocoa class="GhosttyScriptTerminal"/>
       <property name="id" code="ID  " type="text" access="r" description="Stable ID for this terminal surface."/>
-      <property name="name" code="pnam" type="text" access="r" description="Current terminal title.">
+      <property name="name" code="pnam" type="text" access="rw" description="Current terminal title. Setting a non-empty title pins it against terminal-driven updates; setting an empty string restores automatic titles.">
         <cocoa key="title"/>
       </property>
       <property name="working directory" code="Gwdr" type="text" access="r" description="Current working directory for the terminal process."/>

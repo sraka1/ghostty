@@ -1,0 +1,53 @@
+name: fork-macos-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [pane-titlebars]
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+
+      # Public read of the ghostty cachix cache; no auth token needed.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: ghostty
+
+      - name: Select Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      # GhosttyKit is the framework that is built from Zig for the native
+      # Mac app. The nix devshell pins the exact Zig version.
+      - name: Build GhosttyKit
+        run: nix develop -c zig build -Doptimize=ReleaseFast -Demit-macos-app=false
+
+      # Must NOT run inside nix; nix breaks xcodebuild. The project ad-hoc
+      # signs by default (CODE_SIGN_IDENTITY=-), fine for a personal build.
+      - name: Build Ghostty.app
+        run: |
+          cd macos
+          xcodebuild -target Ghostty -configuration Release
+
+      - name: Zip App
+        run: |
+          cd macos/build/Release
+          zip -9 -r --symlinks ../../../ghostty-fork-macos.zip Ghostty.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghostty-fork-macos
+          path: ghostty-fork-macos.zip
+          retention-days: 30

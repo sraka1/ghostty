@@ -241,7 +241,9 @@ extension Ghostty {
         // This is the title from the terminal. This is nil if we're currently using
         // the terminal title as the main title property. If the title is set manually
         // by the user, this is set to the prior value (which may be empty, but non-nil).
-        private var titleFromTerminal: String?
+        // Published so UI (e.g. the split pane titlebar) can show the live
+        // terminal-reported title as a subtitle while a manual title is active.
+        @Published private(set) var titleFromTerminal: String?
 
         // The cached contents of the screen.
         private(set) var cachedScreenContents: CachedValue<String>
@@ -592,18 +594,7 @@ extension Ghostty {
 
                 // Get the input text
                 let newTitle = textField.stringValue
-                if newTitle.isEmpty {
-                    // Empty means that user wants the title to be set automatically
-                    // We also need to reload the config for the "title" property to be
-                    // used again by this tab.
-                    let prevTitle = titleFromTerminal ?? "👻"
-                    titleFromTerminal = nil
-                    setTitle(prevTitle)
-                } else {
-                    // Set the title and prevent it from being changed automatically
-                    titleFromTerminal = title
-                    title = newTitle
-                }
+                setManualTitle(newTitle.isEmpty ? nil : newTitle)
             }
 
             // We prefer to run our alert in a sheet modal if we have a window.
@@ -614,6 +605,26 @@ extension Ghostty {
                 // visible. The above codepath should be taken most times but I'm just
                 // noting this as something I noticed consistently.
                 completionHandler(alert.runModal())
+            }
+        }
+
+        /// Set a manual title that masks terminal-driven title updates, or pass
+        /// nil to restore automatic titles. This is the sticky behavior used by
+        /// promptTitle() and the AppleScript `title` property setter.
+        func setManualTitle(_ newTitle: String?) {
+            if let newTitle, !newTitle.isEmpty {
+                // Stash the terminal-reported title (if we're already manual,
+                // keep the existing stash rather than the old manual title) and
+                // prevent the title from being changed automatically.
+                titleFromTerminal = titleFromTerminal ?? title
+                title = newTitle
+            } else {
+                // Empty means that user wants the title to be set automatically
+                // We also need to reload the config for the "title" property to be
+                // used again by this tab.
+                let prevTitle = titleFromTerminal ?? "👻"
+                titleFromTerminal = nil
+                setTitle(prevTitle)
             }
         }
 
