@@ -42,6 +42,22 @@ jobs:
           cd macos
           xcodebuild -target Ghostty -configuration Release
 
+      # Re-sign everything ad-hoc: the bundled Sparkle framework ships signed
+      # by the Sparkle team; dyld refuses to load a framework whose Team ID
+      # differs from the (ad-hoc) app, crashing at launch.
+      - name: Ad-hoc re-sign bundle
+        run: |
+          APP=macos/build/Release/Ghostty.app
+          SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+          codesign -f -s - "$SPARKLE/XPCServices/Downloader.xpc"
+          codesign -f -s - "$SPARKLE/XPCServices/Installer.xpc"
+          codesign -f -s - "$SPARKLE/Autoupdate"
+          codesign -f -s - "$SPARKLE/Updater.app"
+          codesign -f -s - "$APP/Contents/Frameworks/Sparkle.framework"
+          for p in "$APP"/Contents/PlugIns/*.plugin; do [ -e "$p" ] && codesign -f -s - "$p"; done
+          codesign -f -s - --entitlements macos/Ghostty.entitlements "$APP"
+          codesign --verify --deep --strict "$APP"
+
       - name: Zip App
         run: |
           cd macos/build/Release
