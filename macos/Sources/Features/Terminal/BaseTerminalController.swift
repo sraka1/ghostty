@@ -820,9 +820,32 @@ class BaseTerminalController: NSWindowController,
                 .map { [weak self] in self?.computeTitle(title: $0, bell: $1) ?? "" }
                 .sink { [weak self] in self?.titleDidChange(to: $0) }
                 .store(in: &focusedSurfaceCancellables)
+
+            // Fork feature: window subtitle mirroring the split pane titlebars —
+            // the live terminal-reported title while a manual name is pinned
+            // (running command / cwd / pane-subtitle), else the working
+            // directory. Upstream's window-subtitle config is GTK-only.
+            // Disable with:
+            //   defaults write com.mitchellh.ghostty WindowSubtitleDisabled -bool true
+            titleSurface.$titleFromTerminal
+                .combineLatest(titleSurface.$pwd)
+                .sink { [weak self] in self?.subtitleDidChange(fromTerminal: $0, pwd: $1) }
+                .store(in: &focusedSurfaceCancellables)
         } else {
             // There is no surface to listen to titles for.
             titleDidChange(to: "👻")
+        }
+    }
+
+    private func subtitleDidChange(fromTerminal: String?, pwd: String?) {
+        guard let window else { return }
+        guard !UserDefaults.standard.bool(forKey: "WindowSubtitleDisabled") else { return }
+        if let fromTerminal, !fromTerminal.isEmpty, fromTerminal != window.title {
+            window.subtitle = fromTerminal
+        } else if let pwd, !pwd.isEmpty {
+            window.subtitle = (pwd as NSString).abbreviatingWithTildeInPath
+        } else {
+            window.subtitle = ""
         }
     }
 
