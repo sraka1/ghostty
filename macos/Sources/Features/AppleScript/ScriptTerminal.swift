@@ -53,6 +53,23 @@ final class ScriptTerminal: NSObject {
         }
     }
 
+    /// Exposed as the AppleScript `subtitle` property (fork feature).
+    ///
+    /// An explicit subtitle shown in the pane titlebar and the window
+    /// subtitle, taking precedence over the automatic (terminal-reported)
+    /// subtitle. Setting an empty string clears it.
+    @objc(subtitle)
+    var subtitle: String {
+        get {
+            guard NSApp.isAppleScriptEnabled else { return "" }
+            return surfaceView?.subtitleOverride ?? ""
+        }
+        set {
+            guard NSApp.isAppleScriptEnabled else { return }
+            surfaceView?.setManualSubtitle(newValue.isEmpty ? nil : newValue)
+        }
+    }
+
     /// Exposed as the AppleScript `working directory` property.
     ///
     /// The `sdef` uses a spaced name, but Cocoa scripting maps that to the

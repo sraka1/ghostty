@@ -827,9 +827,9 @@ class BaseTerminalController: NSWindowController,
             // directory. Upstream's window-subtitle config is GTK-only.
             // Disable with:
             //   defaults write com.mitchellh.ghostty WindowSubtitleDisabled -bool true
-            titleSurface.$titleFromTerminal
-                .combineLatest(titleSurface.$pwd)
-                .sink { [weak self] in self?.subtitleDidChange(fromTerminal: $0, pwd: $1) }
+            titleSurface.$subtitleOverride
+                .combineLatest(titleSurface.$titleFromTerminal, titleSurface.$pwd)
+                .sink { [weak self] in self?.subtitleDidChange(override: $0, fromTerminal: $1, pwd: $2) }
                 .store(in: &focusedSurfaceCancellables)
         } else {
             // There is no surface to listen to titles for.
@@ -837,10 +837,12 @@ class BaseTerminalController: NSWindowController,
         }
     }
 
-    private func subtitleDidChange(fromTerminal: String?, pwd: String?) {
+    private func subtitleDidChange(override: String?, fromTerminal: String?, pwd: String?) {
         guard let window else { return }
         guard !UserDefaults.standard.bool(forKey: "WindowSubtitleDisabled") else { return }
-        if let fromTerminal, !fromTerminal.isEmpty, fromTerminal != window.title {
+        if let override, !override.isEmpty {
+            window.subtitle = override
+        } else if let fromTerminal, !fromTerminal.isEmpty, fromTerminal != window.title {
             window.subtitle = fromTerminal
         } else if let pwd, !pwd.isEmpty {
             window.subtitle = (pwd as NSString).abbreviatingWithTildeInPath

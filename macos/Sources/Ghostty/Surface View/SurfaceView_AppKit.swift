@@ -245,6 +245,13 @@ extension Ghostty {
         // terminal-reported title as a subtitle while a manual title is active.
         @Published private(set) var titleFromTerminal: String?
 
+        // Fork feature: an explicit subtitle set via the AppleScript `subtitle`
+        // property. Preferred over the terminal-reported title by the split
+        // pane titlebar and the window subtitle. OSC-based subtitles can't
+        // work reliably: the zsh shell integration re-appends its own precmd
+        // hook to the end every prompt, so its title write always lands last.
+        @Published private(set) var subtitleOverride: String?
+
         // The cached contents of the screen.
         private(set) var cachedScreenContents: CachedValue<String>
         private(set) var cachedVisibleContents: CachedValue<String>
@@ -609,6 +616,16 @@ extension Ghostty {
                 // visible. The above codepath should be taken most times but I'm just
                 // noting this as something I noticed consistently.
                 completionHandler(alert.runModal())
+            }
+        }
+
+        /// Set or clear (nil/empty) the explicit subtitle. Used by the
+        /// AppleScript `subtitle` property setter.
+        func setManualSubtitle(_ newSubtitle: String?) {
+            if let newSubtitle, !newSubtitle.isEmpty {
+                subtitleOverride = newSubtitle
+            } else {
+                subtitleOverride = nil
             }
         }
 

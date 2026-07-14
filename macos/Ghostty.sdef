@@ -89,6 +89,9 @@
       <property name="name" code="pnam" type="text" access="rw" description="Current terminal title. Setting a non-empty title pins it against terminal-driven updates; setting an empty string restores automatic titles.">
         <cocoa key="title"/>
       </property>
+      <property name="subtitle" code="Gsub" type="text" access="rw" description="Explicit subtitle shown in the pane titlebar and window subtitle; takes precedence over the automatic one. Empty clears it.">
+        <cocoa key="subtitle"/>
+      </property>
       <property name="working directory" code="Gwdr" type="text" access="r" description="Current working directory for the terminal process."/>
       <responds-to command="split">
         <cocoa method="handleSplitCommand:"/>

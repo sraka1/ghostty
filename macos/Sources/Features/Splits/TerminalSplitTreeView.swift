@@ -211,6 +211,9 @@ private struct SplitPaneTitlebar: View {
     @ObservedObject var surfaceView: Ghostty.SurfaceView
 
     private var subtitle: String? {
+        if let override = surfaceView.subtitleOverride, !override.isEmpty {
+            return override
+        }
         if let fromTerminal = surfaceView.titleFromTerminal,
            !fromTerminal.isEmpty,
            fromTerminal != surfaceView.title {
