@@ -7,10 +7,12 @@ on:
 
 jobs:
   build:
-    # macos-15: carries both Xcode 16.x (SDK that Zig 0.15 links against
-    # without the Xcode 26.4 __availability_version_check regression,
-    # ziglang/zig#31658) and Xcode 26.2 (what upstream CI uses for the app).
-    runs-on: macos-15
+    # macos-26 host: Xcode 26.x asset tools (actool/ibtool) crash on a
+    # macOS 15 host, and the app build needs Xcode 26. Xcode 26.2 is pinned
+    # for everything: it's what upstream CI uses, and its SDK predates the
+    # Xcode 26.4 __availability_version_check regression that breaks
+    # Zig 0.15 linking (ziglang/zig#31658).
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - name: Checkout code
@@ -23,17 +25,15 @@ jobs:
         with:
           version: 0.15.2
 
-      # GhosttyKit is the framework that is built from Zig for the native
-      # Mac app. Pin Zig's SDK to Xcode 16.4 (macOS 15 SDK).
-      - name: Build GhosttyKit
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-        run: zig build -Doptimize=ReleaseFast -Demit-macos-app=false
-
-      - name: Select Xcode for app build
+      - name: Select Xcode 26.2
         run: |
           sudo xcode-select -s /Applications/Xcode_26.2.app
           xcodebuild -version
+
+      # GhosttyKit is the framework that is built from Zig for the native
+      # Mac app.
+      - name: Build GhosttyKit
+        run: zig build -Doptimize=ReleaseFast -Demit-macos-app=false
 
       # Must NOT run inside nix; nix breaks xcodebuild. The project ad-hoc
       # signs by default (CODE_SIGN_IDENTITY=-), fine for a personal build.
