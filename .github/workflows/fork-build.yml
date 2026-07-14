@@ -7,7 +7,10 @@ on:
 
 jobs:
   build:
-    runs-on: macos-26
+    # macos-15: carries both Xcode 16.x (SDK that Zig 0.15 links against
+    # without the Xcode 26.4 __availability_version_check regression,
+    # ziglang/zig#31658) and Xcode 26.2 (what upstream CI uses for the app).
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - name: Checkout code
@@ -20,16 +23,17 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Select Xcode
-        run: |
-          ls -d /Applications/Xcode*.app
-          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)"
-          xcodebuild -version
-
       # GhosttyKit is the framework that is built from Zig for the native
-      # Mac app.
+      # Mac app. Pin Zig's SDK to Xcode 16.4 (macOS 15 SDK).
       - name: Build GhosttyKit
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
         run: zig build -Doptimize=ReleaseFast -Demit-macos-app=false
+
+      - name: Select Xcode for app build
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app
+          xcodebuild -version
 
       # Must NOT run inside nix; nix breaks xcodebuild. The project ad-hoc
       # signs by default (CODE_SIGN_IDENTITY=-), fine for a personal build.

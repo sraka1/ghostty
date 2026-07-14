@@ -392,7 +392,11 @@ extension Ghostty {
             ) { [weak self] event in self?.localEventHandler(event) }
 
             // Setup our surface. This will also initialize all the terminal IO.
-            let surface_cfg = baseConfig ?? SurfaceConfiguration()
+            var surface_cfg = baseConfig ?? SurfaceConfiguration()
+            // Fork feature: expose this surface's stable UUID to the child
+            // process so in-session tools can address their own pane via the
+            // AppleScript API (e.g. `set name of terminal id $GHOSTTY_SURFACE_UUID`).
+            surface_cfg.environmentVariables["GHOSTTY_SURFACE_UUID"] = self.id.uuidString
             let surface = surface_cfg.withCValue(view: self) { surface_cfg_c in
                 ghostty_surface_new(app, &surface_cfg_c)
             }
