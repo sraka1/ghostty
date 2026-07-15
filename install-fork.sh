@@ -47,8 +47,13 @@ pgrep -x ghostty >/dev/null && { echo "Ghostty still running; aborting (unsaved 
 
 echo "Swapping apps…"
 if [ -d /Applications/Ghostty.app ]; then
-  rm -rf /Applications/Ghostty-stock.app
-  mv /Applications/Ghostty.app /Applications/Ghostty-stock.app
+  if [ ! -d /Applications/Ghostty-stock.app ]; then
+    # first install: keep the original stock app as the rollback
+    mv /Applications/Ghostty.app /Applications/Ghostty-stock.app
+  else
+    # upgrade: stock backup already exists, discard the old fork build
+    rm -rf /Applications/Ghostty.app
+  fi
 fi
 mv "$DIST_DIR/Ghostty.app" /Applications/Ghostty.app
 
@@ -56,5 +61,12 @@ mv "$DIST_DIR/Ghostty.app" /Applications/Ghostty.app
 defaults write com.mitchellh.ghostty SUEnableAutomaticChecks -bool false
 
 echo "Relaunching…"
-open -a /Applications/Ghostty.app
+# Scrub Claude-internal env before relaunching: `open -a` passes the caller's
+# environment to the app, so an install run from inside a Claude Code session
+# would otherwise leak CLAUDE* vars into every pane shell — and any `claude`
+# started there inherits CLAUDE_CODE_CHILD_SESSION=1 and silently stops
+# persisting transcripts (breaks --resume and the pane-recap Stop hook).
+scrub=()
+while IFS= read -r v; do scrub+=(-u "$v"); done < <(env | sed -n 's/^\(CLAUDE[A-Za-z0-9_]*\)=.*/\1/p')
+env "${scrub[@]}" open -a /Applications/Ghostty.app
 echo "Done. Stock app kept at /Applications/Ghostty-stock.app"

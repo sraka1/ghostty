@@ -199,28 +199,39 @@ private struct TerminalSplitLeaf: View {
     }
 }
 
-/// An always-visible compact titlebar shown above each pane in a split,
-/// with the pane's title and a subtitle summarizing what the pane is doing.
+/// An always-visible compact titlebar shown above each pane in a split.
 ///
-/// The title is the surface title: a manually pinned name if one was set
-/// (via prompt_surface_title or the AppleScript `name` property), otherwise
-/// the terminal-reported title. The subtitle prefers the live
-/// terminal-reported title masked by a manual name (the running command, or
-/// the cwd via shell integration), falling back to the working directory.
+/// Row 1: the surface title (a manually pinned name via prompt_surface_title
+/// or the AppleScript `name` property, else the terminal-reported title),
+/// with the working directory to its right.
+/// Row 2 (only when present): the subtitle — a manual override via the
+/// AppleScript `subtitle` property, else the live terminal-reported title
+/// masked by a pinned name (the running command) — wrapped up to a few
+/// lines. The row is part of the titlebar's layout, so the terminal surface
+/// below shrinks to make room; the split dividers are unaffected — only
+/// this pane's own rows change.
 private struct SplitPaneTitlebar: View {
     @ObservedObject var surfaceView: Ghostty.SurfaceView
 
     static let barHeight: CGFloat = 22
     static let textFont = Font.system(size: 11)
-    private static let maxExpansionLines = 4
+    private static let maxSubtitleLines = 4
 
-    @State private var subtitleTruncated: Bool = false
+    private var cwd: String? {
+        guard let pwd = surfaceView.pwd, !pwd.isEmpty else { return nil }
+        return (pwd as NSString).abbreviatingWithTildeInPath
+    }
 
-    /// Non-nil when the subtitle continues in the wrapped expansion row:
-    /// it didn't fit the inline line, or it has explicit newlines.
-    private var expandedSubtitle: String? {
-        guard let subtitle = surfaceView.paneSubtitle else { return nil }
-        return (subtitleTruncated || subtitle.contains("\n")) ? subtitle : nil
+    private var subtitle: String? {
+        if let override = surfaceView.subtitleOverride, !override.isEmpty {
+            return override
+        }
+        if let fromTerminal = surfaceView.titleFromTerminal,
+           !fromTerminal.isEmpty,
+           fromTerminal != surfaceView.title {
+            return fromTerminal
+        }
+        return nil
     }
 
     var body: some View {
@@ -229,52 +240,23 @@ private struct SplitPaneTitlebar: View {
                 Text(surfaceView.title)
                     .font(Self.textFont.weight(.semibold))
                     .lineLimit(1)
-                if let subtitle = surfaceView.paneSubtitle {
-                    let firstLine = subtitle.paneSubtitleFirstLine
-                    Text(firstLine)
+                if let cwd {
+                    Text(cwd)
                         .font(Self.textFont)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.head)
-                        // Kept in the hierarchy for the truncation measurement
-                        // below, but hidden when the expansion row shows the
-                        // full text (avoids duplicating it).
-                        .opacity(expandedSubtitle == nil ? 1 : 0)
-                        // Measure whether the single inline line is truncated:
-                        // the hidden copy takes its intrinsic width, the outer
-                        // reader the width the HStack actually allocated. When
-                        // it is, the wrapped expansion row below appears.
-                        .background(
-                            GeometryReader { allocated in
-                                Text(firstLine)
-                                    .font(Self.textFont)
-                                    .lineLimit(1)
-                                    .fixedSize()
-                                    .hidden()
-                                    .background(
-                                        GeometryReader { intrinsic in
-                                            Color.clear.preference(
-                                                key: SplitPaneSubtitleTruncatedKey.self,
-                                                value: intrinsic.size.width > allocated.size.width + 0.5)
-                                        }
-                                    )
-                            }
-                        )
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 8)
             .frame(height: Self.barHeight)
 
-            // Subtitles that don't fit the inline line (or contain explicit
-            // newlines) continue here, wrapped, as part of the titlebar's
-            // layout: the terminal surface below shrinks to make room. The
-            // split dividers are unaffected — only this pane's rows change.
-            if let subtitle = expandedSubtitle {
+            if let subtitle {
                 Text(subtitle)
                     .font(Self.textFont)
                     .foregroundStyle(.secondary)
-                    .lineLimit(Self.maxExpansionLines)
+                    .lineLimit(Self.maxSubtitleLines)
                     .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,46 +269,8 @@ private struct SplitPaneTitlebar: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
-        .onPreferenceChange(SplitPaneSubtitleTruncatedKey.self) { value in
-            subtitleTruncated = value
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pane title: \(surfaceView.title)")
-    }
-}
-
-/// True when a pane's inline subtitle line had to truncate and the wrapped
-/// expansion row should show.
-private struct SplitPaneSubtitleTruncatedKey: PreferenceKey {
-    static var defaultValue: Bool = false
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = value || nextValue()
-    }
-}
-
-fileprivate extension Ghostty.SurfaceView {
-    /// The pane subtitle: a manual override if one was set (AppleScript
-    /// `subtitle` property), else the live terminal-reported title masked by
-    /// a manual name (running command / cwd), else the working directory.
-    var paneSubtitle: String? {
-        if let override = subtitleOverride, !override.isEmpty {
-            return override
-        }
-        if let fromTerminal = titleFromTerminal,
-           !fromTerminal.isEmpty,
-           fromTerminal != title {
-            return fromTerminal
-        }
-        guard let pwd, !pwd.isEmpty else { return nil }
-        return (pwd as NSString).abbreviatingWithTildeInPath
-    }
-}
-
-fileprivate extension String {
-    /// First line of a (possibly multi-line) subtitle for the inline bar.
-    var paneSubtitleFirstLine: String {
-        guard let newline = firstIndex(of: "\n") else { return self }
-        return String(self[..<newline])
     }
 }
 
