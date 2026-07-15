@@ -841,7 +841,11 @@ class BaseTerminalController: NSWindowController,
         guard let window else { return }
         guard !UserDefaults.standard.bool(forKey: "WindowSubtitleDisabled") else { return }
         if let override, !override.isEmpty {
+            // The macOS window subtitle is single-line; multi-line pane
+            // subtitles (split titlebars render those wrapped) flatten here.
             window.subtitle = override
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .joined(separator: " · ")
         } else if let fromTerminal, !fromTerminal.isEmpty, fromTerminal != window.title {
             window.subtitle = fromTerminal
         } else if let pwd, !pwd.isEmpty {

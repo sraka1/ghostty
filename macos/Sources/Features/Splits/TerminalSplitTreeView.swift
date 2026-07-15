@@ -93,6 +93,11 @@ private struct TerminalSplitLeaf: View {
 
     @State private var dropState: DropState = .idle
     @State private var isSelfDragging: Bool = false
+    @State private var subtitleTruncated: Bool = false
+
+    private var showsPaneTitlebar: Bool {
+        isSplit && !UserDefaults.standard.bool(forKey: "SplitTitlebarDisabled")
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -100,12 +105,27 @@ private struct TerminalSplitLeaf: View {
                 // Fork feature: an always-visible titlebar on each pane when the
                 // window is split. Disable with:
                 //   defaults write com.mitchellh.ghostty SplitTitlebarDisabled -bool true
-                if isSplit && !UserDefaults.standard.bool(forKey: "SplitTitlebarDisabled") {
+                if showsPaneTitlebar {
                     SplitPaneTitlebar(surfaceView: surfaceView)
                 }
                 Ghostty.InspectableSurface(
                     surfaceView: surfaceView,
                     isSplit: isSplit)
+            }
+            .onPreferenceChange(SplitPaneSubtitleTruncatedKey.self) { value in
+                subtitleTruncated = value
+            }
+            // The multi-line subtitle expansion is an overlay on the whole leaf
+            // (not part of the titlebar's layout) so a long subtitle floats over
+            // the terminal content instead of resizing the surface: the split
+            // grid and the terminal's rows/cols never move because of it.
+            .overlay(alignment: .top) {
+                if showsPaneTitlebar {
+                    SplitPaneSubtitleExpansion(
+                        surfaceView: surfaceView,
+                        truncated: subtitleTruncated)
+                        .padding(.top, SplitPaneTitlebar.barHeight)
+                }
             }
             .background {
                 // If we're dragging ourself, we hide the entire drop zone. This makes
@@ -210,35 +230,47 @@ private struct TerminalSplitLeaf: View {
 private struct SplitPaneTitlebar: View {
     @ObservedObject var surfaceView: Ghostty.SurfaceView
 
-    private var subtitle: String? {
-        if let override = surfaceView.subtitleOverride, !override.isEmpty {
-            return override
-        }
-        if let fromTerminal = surfaceView.titleFromTerminal,
-           !fromTerminal.isEmpty,
-           fromTerminal != surfaceView.title {
-            return fromTerminal
-        }
-        guard let pwd = surfaceView.pwd, !pwd.isEmpty else { return nil }
-        return (pwd as NSString).abbreviatingWithTildeInPath
-    }
+    static let barHeight: CGFloat = 22
+    static let textFont = Font.system(size: 11)
 
     var body: some View {
         HStack(spacing: 8) {
             Text(surfaceView.title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(Self.textFont.weight(.semibold))
                 .lineLimit(1)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.system(size: 11))
+            if let subtitle = surfaceView.paneSubtitle {
+                let firstLine = subtitle.paneSubtitleFirstLine
+                Text(firstLine)
+                    .font(Self.textFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.head)
+                    // Measure whether the single inline line is truncated: the
+                    // hidden copy takes its intrinsic width, the outer reader
+                    // the width the HStack actually allocated. The result flows
+                    // up (SplitPaneSubtitleTruncatedKey) to the leaf, which
+                    // shows the floating multi-line expansion.
+                    .background(
+                        GeometryReader { allocated in
+                            Text(firstLine)
+                                .font(Self.textFont)
+                                .lineLimit(1)
+                                .fixedSize()
+                                .hidden()
+                                .background(
+                                    GeometryReader { intrinsic in
+                                        Color.clear.preference(
+                                            key: SplitPaneSubtitleTruncatedKey.self,
+                                            value: intrinsic.size.width > allocated.size.width + 0.5)
+                                    }
+                                )
+                        }
+                    )
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
-        .frame(height: 22)
+        .frame(height: Self.barHeight)
         .frame(maxWidth: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) {
@@ -246,6 +278,75 @@ private struct SplitPaneTitlebar: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pane title: \(surfaceView.title)")
+    }
+}
+
+/// The floating continuation of the pane titlebar for subtitles that don't
+/// fit on the single inline line (or contain explicit newlines). Rendered as
+/// an overlay over the terminal content — never part of the layout — so the
+/// split grid and the surface size are unaffected. Click-through, capped at
+/// a few lines, styled as a drop-down extension of the titlebar.
+private struct SplitPaneSubtitleExpansion: View {
+    @ObservedObject var surfaceView: Ghostty.SurfaceView
+    let truncated: Bool
+
+    private static let maxLines = 4
+
+    var body: some View {
+        if let subtitle = surfaceView.paneSubtitle,
+           truncated || subtitle.contains("\n") {
+            Text(subtitle)
+                .font(SplitPaneTitlebar.textFont)
+                .foregroundStyle(.secondary)
+                .lineLimit(Self.maxLines)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(nsColor: .windowBackgroundColor))
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
+                .shadow(color: .black.opacity(0.15), radius: 3, y: 2)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// True when a pane's inline subtitle line had to truncate; bubbles from the
+/// titlebar up to the split leaf that owns the floating expansion overlay.
+private struct SplitPaneSubtitleTruncatedKey: PreferenceKey {
+    static var defaultValue: Bool = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+fileprivate extension Ghostty.SurfaceView {
+    /// The pane subtitle: a manual override if one was set (AppleScript
+    /// `subtitle` property), else the live terminal-reported title masked by
+    /// a manual name (running command / cwd), else the working directory.
+    var paneSubtitle: String? {
+        if let override = subtitleOverride, !override.isEmpty {
+            return override
+        }
+        if let fromTerminal = titleFromTerminal,
+           !fromTerminal.isEmpty,
+           fromTerminal != title {
+            return fromTerminal
+        }
+        guard let pwd, !pwd.isEmpty else { return nil }
+        return (pwd as NSString).abbreviatingWithTildeInPath
+    }
+}
+
+fileprivate extension String {
+    /// First line of a (possibly multi-line) subtitle for the inline bar.
+    var paneSubtitleFirstLine: String {
+        guard let newline = firstIndex(of: "\n") else { return self }
+        return String(self[..<newline])
     }
 }
 
